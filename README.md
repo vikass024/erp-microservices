@@ -15,11 +15,20 @@ A student project building a modular ERP system for ICFAI Foundation for Higher 
 
 ## Architecture
 
-Each module of the ERP (Auth, Students, Courses, Attendance, Faculty, Exams, Fees, Notifications) runs as its own microservice with its own database, so services can be built, tested, and deployed independently. An API Gateway is the single entry point that routes requests to the correct service.
+The API Gateway is the public entry point. It routes `/auth` to the auth service, `/students` to the student service, and `/courses` to the course service. Auth issues JWTs; student and course services verify those tokens locally using the shared `JWT_SECRET`.
+
+Each service has its own PostgreSQL database and migration directory. Compose starts separate `auth-db`, `student-db`, and `course-db` containers on the shared `erp-network`.
+
+| Component | Container port | Database |
+|---|---:|---|
+| API Gateway | 8080 | — |
+| Auth Service | 4000 | `erp_auth` |
+| Student Service | 4001 | `students_db` |
+| Course Service | 4002 | `courses_db` |
 
 ## Tech Stack
 
-- **Backend:** Node.js, Express
+- **Backend:** Node.js 20, Express
 - **Database:** PostgreSQL (one per service)
 - **Auth:** JWT, bcrypt
 - **Containers:** Docker, Docker Compose
@@ -27,24 +36,55 @@ Each module of the ERP (Auth, Students, Courses, Attendance, Faculty, Exams, Fee
 
 ## Getting Started
 
+Copy `.env.example` to `.env` and replace the local placeholder values, especially `DB_PASS` and `JWT_SECRET`. Then start the services:
+
 ```bash
-git clone https://github.com/vikass024/erp-microservices.git
-cd erp-microservices
 docker compose up --build
 ```
 
-Health check: `GET http://localhost:8080/health`
+The gateway health check is `GET http://localhost:8080/health`. Direct service health checks are available at ports 4000, 4001, and 4002 on `/health`.
 
-## API Endpoints (Auth Service, via Gateway)
+## API Endpoints
 
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | /auth/register | Create a new user |
-| POST | /auth/login | Returns a JWT on success |
+All paths below are through the gateway. Student and course endpoints require `Authorization: Bearer <token>`, except their public health checks. Reads accept any valid token. Create, update, and delete require a token with role `admin`.
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| POST | `/auth/register` | Public | Register a user |
+| POST | `/auth/login` | Public | Log in and receive a JWT |
+| GET | `/students/health` | Public | Student service and database health |
+| POST | `/students` | Admin | Create a student |
+| GET | `/students?page=1&limit=20` | Token | List students; supports `department`, `status`, `year_of_study`, and `q` filters |
+| GET | `/students/:id` | Token | Get one student |
+| PUT | `/students/:id` | Admin | Update a student |
+| DELETE | `/students/:id` | Admin | Mark a student inactive |
+| GET | `/courses/health` | Public | Course service and database health |
+| POST | `/courses` | Admin | Create a course |
+| GET | `/courses?page=1&limit=20` | Token | List courses; supports `department`, `semester`, `status`, and `q` filters |
+| GET | `/courses/:id` | Token | Get one course |
+| PUT | `/courses/:id` | Admin | Update a course |
+| DELETE | `/courses/:id` | Admin | Archive a course |
+
+For example, after obtaining a JWT from `/auth/login`, list students with:
+
+```bash
+curl -H "Authorization: Bearer <token>" "http://localhost:8080/students?page=1&limit=20"
+```
+
+## Tests
+
+The student and course services use Jest and Supertest with mocked PostgreSQL connections:
+
+```bash
+npm ci --prefix services/student-service
+npm test --prefix services/student-service
+npm ci --prefix services/course-service
+npm test --prefix services/course-service
+```
 
 ## Project Status
 
-Phase 1 (Foundation + Auth) complete. Phases 2–4 in progress.
+Phases 1 and 2 (foundation, auth, student management, and course management) are in progress. Phases 3 and 4 are planned.
 
 ## Contributing
 
@@ -53,3 +93,8 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for branch naming and PR rules.
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+## Known limitations
+
+- The auth service's `/register` endpoint currently lets the caller choose any role, including `admin`. Student and course services enforce admin-only writes correctly, but until registration is restricted, any caller can obtain an admin token. Planned fix: restrict role assignment in auth-service (separate PR).
+- No automated tests exist yet for auth-service or the gateway.
