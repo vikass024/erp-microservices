@@ -33,6 +33,24 @@ function userResponse(user) {
   };
 }
 
+function authenticate(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.match(/^Bearer\s+(.+)$/i);
+  if (!token || !process.env.JWT_SECRET) return res.status(401).json({ message: 'A valid bearer token is required' });
+  try {
+    req.user = jwt.verify(token[1], process.env.JWT_SECRET);
+    if (!req.user || !req.user.id || !req.user.email || !req.user.role) throw new Error('Invalid token claims');
+    return next();
+  } catch (error) {
+    return res.status(401).json({ message: 'A valid bearer token is required' });
+  }
+}
+
+function requireAdmin(req, res, next) {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin role is required' });
+  return next();
+}
+
 app.get('/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
@@ -44,7 +62,7 @@ app.get('/health', async (req, res) => {
 });
 
 app.post('/register', async (req, res) => {
-  const { name, email, password, role = 'employee' } = req.body || {};
+  const { name, email, password } = req.body || {};
 
   if (typeof name !== 'string' || name.trim().length < 2) {
     return res.status(400).json({ message: 'Name must be at least 2 characters long' });
@@ -55,17 +73,13 @@ app.post('/register', async (req, res) => {
   if (typeof password !== 'string' || password.length < 8) {
     return res.status(400).json({ message: 'Password must be at least 8 characters long' });
   }
-  if (typeof role !== 'string' || role.trim().length === 0 || role.length > 50) {
-    return res.status(400).json({ message: 'Role must be a non-empty string up to 50 characters' });
-  }
-
   try {
     const passwordHash = await bcrypt.hash(password, bcryptRounds);
     const result = await pool.query(
       `INSERT INTO users (name, email, password_hash, role)
        VALUES ($1, $2, $3, $4)
        RETURNING id, name, email, role, created_at`,
-      [name.trim(), email.trim().toLowerCase(), passwordHash, role.trim()]
+      [name.trim(), email.trim().toLowerCase(), passwordHash, 'employee']
     );
 
     return res.status(201).json({ user: userResponse(result.rows[0]) });
@@ -75,6 +89,28 @@ app.post('/register', async (req, res) => {
     }
     console.error('Registration failed:', error.message);
     return res.status(500).json({ message: 'Unable to register user' });
+  }
+});
+
+app.patch('/users/:id/role', authenticate, requireAdmin, async (req, res) => {
+  if (!/^\d+$/.test(req.params.id) || Number(req.params.id) < 1) {
+    return res.status(400).json({ message: 'User id must be a positive integer' });
+  }
+  const roles = ['admin', 'employee', 'faculty', 'student'];
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) || !roles.includes(req.body.role)) {
+    return res.status(400).json({ message: 'Role must be admin, employee, faculty, or student' });
+  }
+
+  try {
+    const result = await pool.query(
+      'UPDATE users SET role = $1 WHERE id = $2 RETURNING id, name, email, role, created_at',
+      [req.body.role, Number(req.params.id)]
+    );
+    if (!result.rows[0]) return res.status(404).json({ message: 'User not found' });
+    return res.status(200).json({ user: userResponse(result.rows[0]) });
+  } catch (error) {
+    console.error('Role update failed:', error.message);
+    return res.status(500).json({ message: 'Unable to update user role' });
   }
 });
 
