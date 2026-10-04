@@ -1,0 +1,34 @@
+name: CI - Build All Services
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install student-service dependencies
+        run: npm ci --prefix services/student-service
+
+      - name: Test student-service
+        run: npm test --prefix services/student-service
+
+      - name: Install course-service dependencies
+        run: npm ci --prefix services/course-service
+
+      - name: Test course-service
+        run: npm test --prefix services/course-service
+
+      - name: Build all services with Docker Compose
+        run: docker compose build

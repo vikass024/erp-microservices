@@ -1,0 +1,147 @@
+services:
+  api-gateway:
+    build:
+      context: ./api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      AUTH_SERVICE_URL: http://auth-service:4000
+      STUDENT_SERVICE_URL: http://student-service:4001
+      COURSE_SERVICE_URL: http://course-service:4002
+    depends_on:
+      auth-service:
+        condition: service_started
+      student-service:
+        condition: service_started
+      course-service:
+        condition: service_started
+    networks:
+      - erp-network
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      DB_HOST: auth-db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-erp_user}
+      DB_PASS: ${DB_PASS:-change_me_for_local_development}
+      DB_NAME: erp_auth
+      JWT_SECRET: ${JWT_SECRET:-change_me_to_a_long_random_local_development_secret}
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    networks:
+      - erp-network
+
+  student-service:
+    build:
+      context: ./services/student-service
+    ports:
+      - "4001:4001"
+    environment:
+      PORT: 4001
+      DB_HOST: student-db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-erp_user}
+      DB_PASS: ${DB_PASS:-change_me_for_local_development}
+      DB_NAME: students_db
+      JWT_SECRET: ${JWT_SECRET:-change_me_to_a_long_random_local_development_secret}
+    depends_on:
+      student-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4001/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - erp-network
+
+  course-service:
+    build:
+      context: ./services/course-service
+    ports:
+      - "4002:4002"
+    environment:
+      PORT: 4002
+      DB_HOST: course-db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-erp_user}
+      DB_PASS: ${DB_PASS:-change_me_for_local_development}
+      DB_NAME: courses_db
+      JWT_SECRET: ${JWT_SECRET:-change_me_to_a_long_random_local_development_secret}
+    depends_on:
+      course-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4002/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - erp-network
+
+  auth-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER:-erp_user}
+      POSTGRES_PASSWORD: ${DB_PASS:-change_me_for_local_development}
+      POSTGRES_DB: erp_auth
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+      - ./services/auth-service/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-erp_user} -d erp_auth"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - erp-network
+
+  student-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER:-erp_user}
+      POSTGRES_PASSWORD: ${DB_PASS:-change_me_for_local_development}
+      POSTGRES_DB: students_db
+    volumes:
+      - student-db-data:/var/lib/postgresql/data
+      - ./services/student-service/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-erp_user} -d students_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - erp-network
+
+  course-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER:-erp_user}
+      POSTGRES_PASSWORD: ${DB_PASS:-change_me_for_local_development}
+      POSTGRES_DB: courses_db
+    volumes:
+      - course-db-data:/var/lib/postgresql/data
+      - ./services/course-service/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-erp_user} -d courses_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - erp-network
+
+volumes:
+  auth-db-data:
+  student-db-data:
+  course-db-data:
+
+networks:
+  erp-network:
+    driver: bridge
