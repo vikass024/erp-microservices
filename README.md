@@ -15,9 +15,9 @@ A student project building a modular ERP system for ICFAI Foundation for Higher 
 
 ## Architecture
 
-The API Gateway is the public entry point. It routes `/auth` to the auth service, `/students` to the student service, and `/courses` to the course service. Auth issues JWTs; student and course services verify those tokens locally using the shared `JWT_SECRET`.
+The API Gateway is the public entry point. It routes `/auth` to the auth service, `/students` to the student service, `/courses` to the course service, and `/faculty` to the faculty service. Auth issues JWTs; protected services verify those tokens locally using the shared `JWT_SECRET`.
 
-Each service has its own PostgreSQL database and migration directory. Compose starts separate `auth-db`, `student-db`, and `course-db` containers on the shared `erp-network`.
+Each service has its own PostgreSQL database and migration directory. Compose starts a separate database container for each service on the shared `erp-network`.
 
 | Component | Container port | Database |
 |---|---:|---|
@@ -25,6 +25,7 @@ Each service has its own PostgreSQL database and migration directory. Compose st
 | Auth Service | 4000 | `erp_auth` |
 | Student Service | 4001 | `students_db` |
 | Course Service | 4002 | `courses_db` |
+| Faculty Service | 4004 | `faculty_db` |
 
 ## Tech Stack
 
@@ -64,6 +65,12 @@ All paths below are through the gateway. Student and course endpoints require `A
 | GET | `/courses/:id` | Token | Get one course |
 | PUT | `/courses/:id` | Admin | Update a course |
 | DELETE | `/courses/:id` | Admin | Archive a course |
+| GET | `/faculty/health` | Public | Faculty service and database health |
+| POST | `/faculty` | Admin | Create a faculty member |
+| GET | `/faculty?page=1&limit=20` | Token | List active faculty; supports the `department` filter |
+| GET | `/faculty/:id` | Token | Get one faculty member |
+| PUT | `/faculty/:id` | Admin | Update a faculty member |
+| DELETE | `/faculty/:id` | Admin | Archive a faculty member |
 
 For example, after obtaining a JWT from `/auth/login`, list students with:
 
@@ -80,6 +87,8 @@ npm ci --prefix services/student-service
 npm test --prefix services/student-service
 npm ci --prefix services/course-service
 npm test --prefix services/course-service
+npm ci --prefix services/faculty-service
+npm test --prefix services/faculty-service
 ```
 
 ## Project Status
