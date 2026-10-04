@@ -9,12 +9,15 @@ services:
       AUTH_SERVICE_URL: http://auth-service:4000
       STUDENT_SERVICE_URL: http://student-service:4001
       COURSE_SERVICE_URL: http://course-service:4002
+      ATTENDANCE_SERVICE_URL: http://attendance-service:4003
     depends_on:
       auth-service:
         condition: service_started
       student-service:
         condition: service_started
       course-service:
+        condition: service_started
+      attendance-service:
         condition: service_started
     networks:
       - erp-network
@@ -86,6 +89,30 @@ services:
     networks:
       - erp-network
 
+  attendance-service:
+    build:
+      context: ./services/attendance-service
+    ports:
+      - "4003:4003"
+    environment:
+      PORT: 4003
+      DB_HOST: attendance-db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-erp_user}
+      DB_PASS: ${DB_PASS:-change_me_for_local_development}
+      DB_NAME: attendance_db
+      JWT_SECRET: ${JWT_SECRET:-change_me_to_a_long_random_local_development_secret}
+    depends_on:
+      attendance-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4003/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - erp-network
+
   auth-db:
     image: postgres:16
     environment:
@@ -137,10 +164,28 @@ services:
     networks:
       - erp-network
 
+  attendance-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER:-erp_user}
+      POSTGRES_PASSWORD: ${DB_PASS:-change_me_for_local_development}
+      POSTGRES_DB: attendance_db
+    volumes:
+      - attendance-db-data:/var/lib/postgresql/data
+      - ./services/attendance-service/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-erp_user} -d attendance_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - erp-network
+
 volumes:
   auth-db-data:
   student-db-data:
   course-db-data:
+  attendance-db-data:
 
 networks:
   erp-network:
