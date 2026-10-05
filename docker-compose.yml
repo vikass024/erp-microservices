@@ -12,6 +12,7 @@ services:
       ATTENDANCE_SERVICE_URL: http://attendance-service:4003
       FACULTY_SERVICE_URL: http://faculty-service:4004
       FEES_SERVICE_URL: http://fees-service:4006
+      NOTIFICATION_SERVICE_URL: http://notification-service:4007
     depends_on:
       auth-service:
         condition: service_started
@@ -24,6 +25,8 @@ services:
       faculty-service:
         condition: service_started
       fees-service:
+        condition: service_started
+      notification-service:
         condition: service_started
     networks:
       - erp-network
@@ -167,6 +170,30 @@ services:
     networks:
       - erp-network
 
+  notification-service:
+    build:
+      context: ./services/notification-service
+    ports:
+      - "4007:4007"
+    environment:
+      PORT: 4007
+      DB_HOST: notification-db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-erp_user}
+      DB_PASS: ${DB_PASS:-change_me_for_local_development}
+      DB_NAME: notifications_db
+      JWT_SECRET: ${JWT_SECRET:-change_me_to_a_long_random_local_development_secret}
+    depends_on:
+      notification-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4007/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - erp-network
+
   auth-db:
     image: postgres:16
     environment:
@@ -269,6 +296,23 @@ services:
     networks:
       - erp-network
 
+  notification-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER:-erp_user}
+      POSTGRES_PASSWORD: ${DB_PASS:-change_me_for_local_development}
+      POSTGRES_DB: notifications_db
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+      - ./services/notification-service/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-erp_user} -d notifications_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - erp-network
+
 volumes:
   auth-db-data:
   student-db-data:
@@ -276,6 +320,7 @@ volumes:
   attendance-db-data:
   faculty-db-data:
   fees-db-data:
+  notification-db-data:
 
 networks:
   erp-network:
