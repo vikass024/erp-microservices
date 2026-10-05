@@ -11,6 +11,7 @@ services:
       COURSE_SERVICE_URL: http://course-service:4002
       ATTENDANCE_SERVICE_URL: http://attendance-service:4003
       FACULTY_SERVICE_URL: http://faculty-service:4004
+      EXAM_SERVICE_URL: http://exam-service:4005
       FEES_SERVICE_URL: http://fees-service:4006
       NOTIFICATION_SERVICE_URL: http://notification-service:4007
     depends_on:
@@ -23,6 +24,8 @@ services:
       attendance-service:
         condition: service_started
       faculty-service:
+        condition: service_started
+      exam-service:
         condition: service_started
       fees-service:
         condition: service_started
@@ -140,6 +143,30 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:4004/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - erp-network
+
+  exam-service:
+    build:
+      context: ./services/exam-service
+    ports:
+      - "4005:4005"
+    environment:
+      PORT: 4005
+      DB_HOST: exam-db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-erp_user}
+      DB_PASS: ${DB_PASS:-change_me_for_local_development}
+      DB_NAME: exams_db
+      JWT_SECRET: ${JWT_SECRET:-change_me_to_a_long_random_local_development_secret}
+    depends_on:
+      exam-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4005/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -279,6 +306,23 @@ services:
     networks:
       - erp-network
 
+  exam-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER:-erp_user}
+      POSTGRES_PASSWORD: ${DB_PASS:-change_me_for_local_development}
+      POSTGRES_DB: exams_db
+    volumes:
+      - exam-db-data:/var/lib/postgresql/data
+      - ./services/exam-service/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-erp_user} -d exams_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - erp-network
+
   fees-db:
     image: postgres:16
     environment:
@@ -319,6 +363,7 @@ volumes:
   course-db-data:
   attendance-db-data:
   faculty-db-data:
+  exam-db-data:
   fees-db-data:
   notification-db-data:
 
