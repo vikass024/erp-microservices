@@ -11,6 +11,7 @@ services:
       COURSE_SERVICE_URL: http://course-service:4002
       ATTENDANCE_SERVICE_URL: http://attendance-service:4003
       FACULTY_SERVICE_URL: http://faculty-service:4004
+      FEES_SERVICE_URL: http://fees-service:4006
     depends_on:
       auth-service:
         condition: service_started
@@ -21,6 +22,8 @@ services:
       attendance-service:
         condition: service_started
       faculty-service:
+        condition: service_started
+      fees-service:
         condition: service_started
     networks:
       - erp-network
@@ -140,6 +143,30 @@ services:
     networks:
       - erp-network
 
+  fees-service:
+    build:
+      context: ./services/fees-service
+    ports:
+      - "4006:4006"
+    environment:
+      PORT: 4006
+      DB_HOST: fees-db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-erp_user}
+      DB_PASS: ${DB_PASS:-change_me_for_local_development}
+      DB_NAME: fees_db
+      JWT_SECRET: ${JWT_SECRET:-change_me_to_a_long_random_local_development_secret}
+    depends_on:
+      fees-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4006/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - erp-network
+
   auth-db:
     image: postgres:16
     environment:
@@ -225,12 +252,30 @@ services:
     networks:
       - erp-network
 
+  fees-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER:-erp_user}
+      POSTGRES_PASSWORD: ${DB_PASS:-change_me_for_local_development}
+      POSTGRES_DB: fees_db
+    volumes:
+      - fees-db-data:/var/lib/postgresql/data
+      - ./services/fees-service/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-erp_user} -d fees_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - erp-network
+
 volumes:
   auth-db-data:
   student-db-data:
   course-db-data:
   attendance-db-data:
   faculty-db-data:
+  fees-db-data:
 
 networks:
   erp-network:
