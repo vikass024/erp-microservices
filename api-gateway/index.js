@@ -51,6 +51,10 @@ addServiceProxy('/notifications', notificationServiceUrl, 'NOTIFICATION_SERVICE_
 
 app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
 
-app.listen(port, () => {
-  console.log(`API gateway listening on port ${port}`);
-});
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`API gateway listening on port ${port}`);
+  });
+}
+
+module.exports = app;
