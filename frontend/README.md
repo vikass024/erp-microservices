@@ -27,3 +27,7 @@ The exam service hosts results at its own `/results` path. Since the gateway str
 ## Available sections
 
 The dashboard reads counts from real service list responses. Management pages use the fields, routes, and role permissions defined by the backend. Unsupported actions (such as editing notifications) are not shown. Service errors and empty responses are displayed in the interface.
+
+Exams (`/exams`) and Results (`/results`) are writable by admins and faculty; Fees (`/fees`) is writable by admins only. Other signed-in roles can view each resource. Exams can be searched by name or course code and filtered by course code. Results use `/exams/results` and support search plus exam and student ID filters; result forms select an active exam and prevent marks from exceeding its maximum. Fees support search and student ID/status filters.
+
+Notifications (`/notifications`) are unpaginated and visible to all signed-in users. Admins and faculty can create and delete announcements; the form supports broadcast announcements by leaving the audience unset or selecting Everyone. Notifications have no update endpoint, so editing is not offered.
