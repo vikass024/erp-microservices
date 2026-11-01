@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import ResultsPage from './modules/exams/ResultsPage.jsx';
 import './styles.css';
 
 const API = '/api';
@@ -113,10 +114,27 @@ function App() {
         <div className="profile"><div className="avatar">{(session.user?.name || 'U').slice(0, 1).toUpperCase()}</div><div className="profile-copy"><strong>{session.user?.name || 'User'}</strong><span>{session.user?.role || 'member'}</span></div><button className="text-button" onClick={signOut}>Sign out</button></div>
       </header>
       <div className="page-wrap" key={current}>
-        {current === 'dashboard' ? <Dashboard token={session.token} user={session.user} onNavigate={navigate} /> : <ResourcePage key={current} type={current} token={session.token} user={session.user} />}
+        {current === 'dashboard' ? <Dashboard token={session.token} user={session.user} onNavigate={navigate} />
+          : current === 'results' ? <ResultsPage request={request} token={session.token} user={session.user} />
+            : current === 'exams' ? <ExamsPage token={session.token} user={session.user} />
+              : current === 'fees' ? <FeesPage token={session.token} user={session.user} />
+                : current === 'notifications' ? <NotificationsPage token={session.token} user={session.user} />
+                  : <ResourcePage key={current} type={current} token={session.token} user={session.user} />}
       </div>
     </main>
   </div>;
+}
+
+function ExamsPage({ token, user }) {
+  return <ResourcePage type="exams" token={token} user={user} />;
+}
+
+function FeesPage({ token, user }) {
+  return <ResourcePage type="fees" token={token} user={user} />;
+}
+
+function NotificationsPage({ token, user }) {
+  return <ResourcePage type="notifications" token={token} user={user} />;
 }
 
 function Sidebar({ active, onNavigate, mobileOpen }) {
