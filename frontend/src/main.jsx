@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
@@ -29,18 +29,24 @@ const resources = {
   attendance: { title: 'Attendance', subtitle: 'Review and record daily student attendance.', endpoint: '/attendance', key: 'attendances', writer: ['admin', 'faculty'], fields: [
     ['student_id', 'Student ID', 'number', true], ['date', 'Date', 'date', true], ['status', 'Status', 'select', true, ['present', 'absent', 'leave']], ['remarks', 'Remarks', 'textarea']
   ], columns: ['student_id', 'date', 'status', 'remarks', 'record_status'] },
-  exams: { title: 'Exams', subtitle: 'Plan examination dates and mark allocations.', endpoint: '/exams', key: 'exams', writer: ['admin', 'faculty'], fields: [
+  exams: { title: 'Exams', subtitle: 'Plan examination dates and mark allocations.', context: 'Keep exam dates and maximum marks aligned with each course offering.', endpoint: '/exams', key: 'exams', writer: ['admin', 'faculty'], filters: [
+    { name: 'course_code', label: 'Course code', type: 'text' }
+  ], fields: [
     ['exam_name', 'Exam name', 'text', true], ['course_code', 'Course code', 'text', true], ['exam_date', 'Exam date', 'date', true], ['max_marks', 'Maximum marks', 'number', true], ['record_status', 'Record status', 'select', false, ['active', 'archived']]
   ], columns: ['exam_name', 'course_code', 'exam_date', 'max_marks', 'record_status'] },
-  results: { title: 'Results', subtitle: 'Record marks and review published results.', endpoint: '/exams/results', key: 'results', writer: ['admin', 'faculty'], fields: [
+  results: { title: 'Results', subtitle: 'Record marks and review published results.', context: 'Narrow the list by exam or student ID, then compare marks and grade. Open View to inspect every field returned by the service before editing a result.', endpoint: '/exams/results', key: 'results', writer: ['admin', 'faculty'], filters: [
+    { name: 'exam_id', label: 'Exam ID', type: 'number' }, { name: 'student_id', label: 'Student ID', type: 'number' }
+  ], fields: [
     ['exam_id', 'Exam ID', 'number', true], ['student_id', 'Student ID', 'number', true], ['marks_obtained', 'Marks obtained', 'number', true], ['grade', 'Grade', 'text'], ['record_status', 'Record status', 'select', false, ['active', 'archived']]
   ], columns: ['exam_id', 'student_id', 'marks_obtained', 'grade', 'record_status'] },
-  fees: { title: 'Fees', subtitle: 'Track student charges, due dates, and payments.', endpoint: '/fees', key: 'fees', admin: true, fields: [
+  fees: { title: 'Fees', subtitle: 'Track student charges, due dates, and payments.', context: 'Use payment status and due dates to guide fee follow-up.', endpoint: '/fees', key: 'fees', admin: true, filters: [
+    { name: 'student_id', label: 'Student ID', type: 'number' }, { name: 'status', label: 'Status', type: 'select', options: ['pending', 'paid', 'overdue'] }
+  ], fields: [
     ['student_id', 'Student ID', 'number', true], ['fee_type', 'Fee type', 'text', true], ['amount', 'Amount', 'number', true], ['due_date', 'Due date', 'date', true], ['status', 'Status', 'select', true, ['pending', 'paid', 'overdue']], ['paid_date', 'Paid date', 'date']
   ], columns: ['student_id', 'fee_type', 'amount', 'due_date', 'status', 'paid_date'] },
-  notifications: { title: 'Notifications', subtitle: 'Share announcements with students and faculty.', endpoint: '/notifications', key: 'notifications', writer: ['admin', 'faculty'], searchable: false, fields: [
+  notifications: { title: 'Notifications', subtitle: 'Share announcements with students and faculty.', context: 'Confirm the audience before sharing a campus announcement.', endpoint: '/notifications', key: 'notifications', writer: ['admin', 'faculty'], paginated: false, searchable: false, fields: [
     ['title', 'Title', 'text', true], ['message', 'Message', 'textarea', true], ['target_role', 'Audience', 'select', false, ['all', 'student', 'faculty']]
-  ], columns: ['title', 'target_role', 'created_by', 'created_at'] }
+  ], columns: ['title', 'message', 'target_role', 'created_by', 'created_at'] }
 };
 
 function getSession() {
@@ -171,72 +177,177 @@ function Dashboard({ token, user, onNavigate }) {
 }
 
 function ResourcePage({ type, token, user }) {
-  const config = resources[type]; const [items, setItems] = useState([]); const [pagination, setPagination] = useState(null); const [page, setPage] = useState(1); const [search, setSearch] = useState(''); const [searchInput, setSearchInput] = useState(''); const [busy, setBusy] = useState(true); const [error, setError] = useState(''); const [dialog, setDialog] = useState(null); const [saving, setSaving] = useState(false); const [notice, setNotice] = useState('');
+  const config = resources[type];
+  const [items, setItems] = useState([]);
+  const [pagination, setPagination] = useState(null);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [filters, setFilters] = useState({});
+  const [filterInput, setFilterInput] = useState({});
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState('');
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [dialog, setDialog] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState('');
   const canWrite = config.admin ? user?.role === 'admin' : config.writer?.includes(user?.role);
   const canEdit = canWrite && type !== 'notifications';
-  const canDelete = canWrite && type !== 'notifications';
+  const canArchive = canWrite && type !== 'notifications';
+  const canDelete = canWrite && type === 'notifications';
+  const columns = config.columns;
+
   const load = async () => {
-    setBusy(true); setError('');
+    setBusy(true);
+    setError('');
+    setLoadFailed(false);
     try {
-      const audience = type === 'notifications' && ['student', 'faculty'].includes(user?.role) ? user.role : undefined;
-      const data = await request(config.endpoint, { token, query: { page, limit: 20, ...(search ? { [config.filter || 'q']: search } : {}), ...(audience ? { target_role: audience } : {}) } });
-      setItems(data[config.key] || []); setPagination(data.pagination || null);
-    } catch (err) { setError(err.message || 'Could not load records.'); setItems([]); setPagination(null); }
-    finally { setBusy(false); }
+      const query = {
+        ...(config.paginated !== false ? { page, limit: 20 } : {}),
+        ...(search ? { q: search } : {}),
+        ...filters
+      };
+      const data = await request(config.endpoint, { token, query });
+      setItems(data[config.key] || []);
+      setPagination(data.pagination || null);
+    } catch (err) {
+      setError(err.message || 'Could not load records.');
+      setLoadFailed(true);
+      setItems([]);
+      setPagination(null);
+    } finally {
+      setBusy(false);
+    }
   };
-  useEffect(() => { load(); }, [type, page, search, token, user?.role]);
-  const columns = useMemo(() => config.columns.filter(column => items.length === 0 || items.some(item => item[column] !== undefined)), [config, items]);
-  function searchSubmit(event) { event.preventDefault(); setPage(1); setSearch(searchInput.trim()); }
+
+  useEffect(() => { load(); }, [type, page, search, filters, token]);
+
+  function searchSubmit(event) {
+    event.preventDefault();
+    const nextFilters = Object.fromEntries((config.filters || [])
+      .map(filter => [filter.name, String(filterInput[filter.name] || '').trim()])
+      .filter(([, value]) => value !== ''));
+    setPage(1);
+    setSearch(config.searchable === false ? '' : searchInput.trim());
+    setFilters(nextFilters);
+  }
+
   async function saveRecord(values) {
-    setSaving(true); setError('');
+    setSaving(true);
+    setError('');
     try {
       const editing = dialog?.mode === 'edit';
       await request(`${config.endpoint}${editing ? `/${dialog.item.id}` : ''}`, { token, method: editing ? 'PUT' : 'POST', body: values });
-      setDialog(null); setNotice(editing ? 'Record updated.' : 'Record created.'); await load();
-    } catch (err) { setError(err.message || 'Unable to save this record.'); }
-    finally { setSaving(false); }
+      setDialog(null);
+      setNotice(editing ? 'Record updated.' : 'Record created.');
+      await load();
+    } catch (err) {
+      return err.message || 'Unable to save this record.';
+    } finally {
+      setSaving(false);
+    }
   }
+
   async function removeRecord(item) {
-    if (!window.confirm(`Archive or delete this ${config.title.toLowerCase().replace(/s$/, '')} record? This action cannot be easily reversed.`)) return;
+    const action = type === 'notifications' ? 'delete' : 'archive';
+    if (!window.confirm(`${action === 'delete' ? 'Delete' : 'Archive'} this ${config.title.toLowerCase().replace(/s$/, '')} record? ${action === 'archive' ? 'It will no longer appear in the active records list.' : 'This action cannot be undone.'}`)) return;
     setError('');
-    try { await request(`${config.endpoint}/${item.id}`, { token, method: 'DELETE' }); setNotice(type === 'notifications' ? 'Notification deleted.' : 'Record archived.'); await load(); }
-    catch (err) { setError(err.message || 'Unable to remove this record.'); }
+    try {
+      await request(`${config.endpoint}/${item.id}`, { token, method: 'DELETE' });
+      setNotice(type === 'notifications' ? 'Notification deleted.' : 'Record archived.');
+      await load();
+    } catch (err) {
+      setError(err.message || 'Unable to remove this record.');
+    }
   }
+
   const singular = { students: 'student', courses: 'course', faculty: 'faculty member', attendance: 'attendance record', exams: 'exam', results: 'result', fees: 'fee', notifications: 'notification' }[type];
   return <>
     <div className="page-heading"><div><span className="eyebrow">CAMPUS MANAGEMENT</span><h1>{config.title}</h1><p>{config.subtitle}</p></div>{canWrite && <button className="button primary" onClick={() => { setError(''); setDialog({ mode: 'create' }); }}><span className="plus">＋</span> Add {singular}</button>}</div>
+    {config.context && <p className="resource-context"><span aria-hidden="true">i</span>{config.context}</p>}
     {notice && <div className="alert success">{notice}<button onClick={() => setNotice('')}>×</button></div>}
-    {!canWrite && <div className="role-note">You can view these records. Adding or changing them requires {config.admin ? 'an admin' : 'an admin or faculty'} role.</div>}
-    <section className="panel table-panel"><div className="table-toolbar"><div><span className="eyebrow">RECORDS</span><h2>{config.title} directory</h2></div>{config.searchable !== false && <form className="search-form" onSubmit={searchSubmit}><span>⌕</span><input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder={config.filter ? 'Filter by department…' : `Search ${config.title.toLowerCase()}…`} aria-label={config.filter ? 'Filter faculty by department' : `Search ${config.title}`} /><button type="submit">{config.filter ? 'Filter' : 'Search'}</button></form>}</div>
+    {!canWrite && <div className="role-note">You can view these records. {type === 'notifications' ? 'Creating or deleting announcements requires an admin or faculty role.' : `Adding or changing them requires ${config.admin ? 'an admin' : 'an admin or faculty'} role.`}</div>}
+    <section className="panel table-panel"><div className="table-toolbar"><div><span className="eyebrow">RECORDS</span><h2>{config.title} directory</h2></div>{(config.searchable !== false || config.filters?.length > 0) && <form className="resource-filters" onSubmit={searchSubmit}>
+      {config.searchable !== false && <label className="search-form"><span>⌕</span><input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder={`Search ${config.title.toLowerCase()}…`} aria-label={`Search ${config.title}`} /></label>}
+      {(config.filters || []).map(filter => <label className="filter-field" key={filter.name}>{filter.label}{filter.type === 'select' ? <select value={filterInput[filter.name] || ''} onChange={event => setFilterInput({ ...filterInput, [filter.name]: event.target.value })}><option value="">All</option>{filter.options.map(value => <option key={value} value={value}>{humanize(value)}</option>)}</select> : <input type={filter.type} min={filter.type === 'number' ? 1 : undefined} value={filterInput[filter.name] || ''} onChange={event => setFilterInput({ ...filterInput, [filter.name]: event.target.value })} />}</label>)}
+      <button className="button secondary filter-submit" type="submit">Apply</button>
+    </form>}</div>
       {error && <div className="alert error table-alert">{error}<button onClick={load}>Try again</button></div>}
-      <div className="table-scroll"><table><thead><tr>{columns.map(column => <th key={column}>{humanize(column)}</th>)}<th className="actions-head">Actions</th></tr></thead><tbody>
-        {busy ? <tr><td className="table-state" colSpan={columns.length + 1}><span className="spinner dark" /> Loading {config.title.toLowerCase()}…</td></tr> : items.length === 0 ? <tr><td className="table-state" colSpan={columns.length + 1}><div className="empty-state"><div className="empty-symbol">⌕</div><strong>{search ? 'No matching records' : `No ${config.title.toLowerCase()} yet`}</strong><span>{search ? 'Try another search term.' : 'Records from your ERP service will appear here.'}</span></div></td></tr> : items.map(item => <tr key={item.id}>{columns.map(column => <td key={column}>{renderCell(item[column], column)}</td>)}<td className="row-actions"><button className="action-button" title="View details" onClick={() => setDialog({ mode: 'view', item })}>View</button>{canEdit && <button className="action-button" title="Edit record" onClick={() => { setError(''); setDialog({ mode: 'edit', item }); }}>Edit</button>}{canDelete && <button className="action-button danger-text" title="Delete record" onClick={() => removeRecord(item)}>Delete</button>}{type === 'notifications' && canWrite && <button className="action-button danger-text" onClick={() => removeRecord(item)}>Delete</button>}</td></tr>)}
-      </tbody></table></div>
-      <div className="table-footer"><span>{pagination ? `Showing ${items.length ? (page - 1) * 20 + 1 : 0}–${(page - 1) * 20 + items.length} of ${pagination.total}` : `${items.length} ${config.title.toLowerCase()} shown`}</span>{pagination && <div className="pagination"><button disabled={page <= 1 || busy} onClick={() => setPage(value => value - 1)}>← Previous</button><span>Page {page}{pagination.pages ? ` of ${pagination.pages}` : ''}</span><button disabled={page >= pagination.pages || busy} onClick={() => setPage(value => value + 1)}>Next →</button></div>}</div>
+      {busy ? <div className="table-state-panel" role="status"><div className="empty-state"><strong><span className="spinner dark" /> Loading {config.title.toLowerCase()}…</strong></div></div> : loadFailed ? <div className="table-state-panel" role="status"><div className="empty-state unavailable-state"><strong>Records unavailable</strong><span>Try again when the service is available.</span></div></div> : items.length === 0 ? <div className="table-state-panel" role="status"><div className="empty-state"><div className="empty-symbol">⌕</div><strong>{search || Object.keys(filters).length ? 'No matching records' : `No ${config.title.toLowerCase()} yet`}</strong><span>{search || Object.keys(filters).length ? 'Try adjusting your search or filters.' : 'Records from your ERP service will appear here.'}</span></div></div> : <div className="table-scroll"><table><thead><tr>{columns.map(column => <th key={column}>{humanize(column)}</th>)}<th className="actions-head">Actions</th></tr></thead><tbody>
+        {items.map(item => <tr key={item.id}>{columns.map(column => <td key={column}>{renderCell(item[column], column)}</td>)}<td className="row-actions"><button className="action-button" title="View details" onClick={() => setDialog({ mode: 'view', item })}>View</button>{canEdit && <button className="action-button" title="Edit record" onClick={() => { setError(''); setDialog({ mode: 'edit', item }); }}>Edit</button>}{canArchive && <button className="action-button danger-text" title="Archive record" onClick={() => removeRecord(item)}>Archive</button>}{canDelete && <button className="action-button danger-text" title="Delete notification" onClick={() => removeRecord(item)}>Delete</button>}</td></tr>)}
+      </tbody></table></div>}
+      <div className="table-footer"><span>{busy ? 'Loading records…' : loadFailed ? 'Record count unavailable' : pagination ? `Showing ${items.length ? (page - 1) * 20 + 1 : 0}–${(page - 1) * 20 + items.length} of ${pagination.total}` : `${items.length} ${config.title.toLowerCase()} shown`}</span>{pagination && <div className="pagination"><button disabled={page <= 1 || busy} onClick={() => setPage(value => value - 1)}>← Previous</button><span>Page {page}{pagination.pages ? ` of ${pagination.pages}` : ''}</span><button disabled={page >= pagination.pages || busy} onClick={() => setPage(value => value + 1)}>Next →</button></div>}</div>
     </section>
-    {dialog && <RecordDialog config={config} dialog={dialog} saving={saving} onClose={() => setDialog(null)} onSave={saveRecord} />}
+    {dialog && <RecordDialog config={config} dialog={dialog} saving={saving} token={token} onClose={() => setDialog(null)} onSave={saveRecord} />}
   </>;
 }
 
-function RecordDialog({ config, dialog, saving, onClose, onSave }) {
+function RecordDialog({ config, dialog, saving, token, onClose, onSave }) {
   const initial = dialog.item || {};
   const [values, setValues] = useState(() => Object.fromEntries(config.fields.map(([key]) => [key, initial[key] === null ? '' : initial[key] ?? ''])));
-  if (dialog.mode === 'view') return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section className="modal detail-modal"><div className="modal-header"><div><span className="eyebrow">RECORD DETAILS</span><h2>{({ students: 'Student', courses: 'Course', faculty: 'Faculty member', attendance: 'Attendance record', exams: 'Exam', results: 'Result', fees: 'Fee', notifications: 'Notification' })[config.key === 'faculties' ? 'faculty' : config.key === 'attendances' ? 'attendance' : config.key] || config.title} #{initial.id}</h2></div><button className="close-button" onClick={onClose}>×</button></div><div className="detail-grid">{Object.entries(initial).map(([key, value]) => <div className="detail-field" key={key}><span>{humanize(key)}</span><strong>{renderCell(value, key)}</strong></div>)}</div><div className="modal-footer"><button className="button secondary" onClick={onClose}>Close</button></div></section></div>;
-  function submit(event) {
+  const [activeExams, setActiveExams] = useState([]);
+  const [loadingExams, setLoadingExams] = useState(config.key === 'results' && dialog.mode !== 'view');
+  const [examError, setExamError] = useState('');
+  const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    if (config.key !== 'results' || dialog.mode === 'view') return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const exams = [];
+        let currentPage = 1;
+        let pageCount = 1;
+        do {
+          const data = await request('/exams', { token, query: { page: currentPage, limit: 100 } });
+          exams.push(...(data.exams || []));
+          pageCount = data.pagination?.pages || currentPage;
+          currentPage += 1;
+        } while (currentPage <= pageCount);
+        if (!cancelled) setActiveExams(exams.filter(exam => exam.record_status === 'active'));
+      } catch (err) {
+        if (!cancelled) setExamError(err.message || 'Unable to load active exams.');
+      } finally {
+        if (!cancelled) setLoadingExams(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [config.key, dialog.mode, token]);
+
+  const selectedExam = activeExams.find(exam => String(exam.id) === String(values.exam_id));
+  if (dialog.mode === 'view') return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section className="modal detail-modal"><div className="modal-header"><div><span className="eyebrow">RECORD DETAILS</span><h2>{({ students: 'Student', courses: 'Course', faculty: 'Faculty member', attendance: 'Attendance record', exams: 'Exam', results: 'Result', fees: 'Fee', notifications: 'Notification' })[config.key === 'faculties' ? 'faculty' : config.key === 'attendances' ? 'attendance' : config.key] || config.title} #{initial.id}</h2></div><button type="button" className="close-button" onClick={onClose}>×</button></div><div className="detail-grid">{Object.entries(initial).map(([key, value]) => <div className="detail-field" key={key}><span>{humanize(key)}</span><strong>{renderCell(value, key)}</strong></div>)}</div><div className="modal-footer"><button className="button secondary" onClick={onClose}>Close</button></div></section></div>;
+
+  async function submit(event) {
     event.preventDefault();
+    setFormError('');
+    if (config.key === 'results') {
+      if (loadingExams || examError) return;
+      if (!selectedExam) { setFormError('Choose an active exam before saving this result.'); return; }
+      if (Number(values.marks_obtained) > Number(selectedExam.max_marks)) {
+        setFormError(`Marks obtained cannot exceed ${selectedExam.max_marks} for this exam.`);
+        return;
+      }
+    }
     const data = {};
     for (const [key, label, type] of config.fields) {
       const value = values[key];
       if (value === '' || value === null) continue;
-      if (type === 'number') data[key] = Number(value); else data[key] = value;
+      data[key] = type === 'number' ? Number(value) : value;
     }
     if (config.endpoint === '/notifications' && data.target_role === 'all') data.target_role = null;
-    onSave(data);
+    const saveError = await onSave(data);
+    if (saveError) setFormError(saveError);
   }
-  const singular = { students: 'student', courses: 'course', faculty: 'faculty member', attendance: 'attendance record', exams: 'exam', results: 'result', fees: 'fee', notifications: 'notification' }[config.key === 'faculties' ? 'faculty' : config.key === 'attendances' ? 'attendance' : config.key];
-  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !saving) onClose(); }}><section className="modal"><form onSubmit={submit}><div className="modal-header"><div><span className="eyebrow">{dialog.mode === 'edit' ? 'UPDATE RECORD' : 'NEW RECORD'}</span><h2>{dialog.mode === 'edit' ? `Edit ${singular}` : `Add ${singular}`}</h2></div><button type="button" className="close-button" onClick={onClose}>×</button></div><div className="form-grid">{config.fields.map(([key, label, type, required, options]) => <label key={key} className={type === 'textarea' ? 'span-two' : ''}>{label}{type === 'textarea' ? <textarea value={values[key]} required={required} rows="3" onChange={event => setValues({ ...values, [key]: event.target.value })} /> : type === 'select' ? <select value={values[key]} required={required} onChange={event => setValues({ ...values, [key]: event.target.value })}><option value="">Select {label.toLowerCase()}</option>{options.map(value => <option key={value} value={value}>{value === 'all' ? 'Everyone' : humanize(value)}</option>)}</select> : <input type={type} value={values[key]} required={required} min={type === 'number' ? key === 'marks_obtained' || key === 'capacity' ? 0 : 1 : undefined} step={type === 'number' && key === 'amount' ? '0.01' : '1'} onChange={event => setValues({ ...values, [key]: event.target.value })} />}</label>)}</div><div className="modal-footer"><button type="button" className="button secondary" disabled={saving} onClick={onClose}>Cancel</button><button className="button primary" disabled={saving}>{saving ? <><span className="spinner" /> Saving…</> : dialog.mode === 'edit' ? 'Save changes' : 'Create record'}</button></div></form></section></div>;
-}
 
+  const singular = { students: 'student', courses: 'course', faculty: 'faculty member', attendance: 'attendance record', exams: 'exam', results: 'result', fees: 'fee', notifications: 'notification' }[config.key === 'faculties' ? 'faculty' : config.key === 'attendances' ? 'attendance' : config.key];
+  const resultFormBlocked = config.key === 'results' && (loadingExams || Boolean(examError) || activeExams.length === 0);
+  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !saving) onClose(); }}><section className="modal"><form onSubmit={submit}><div className="modal-header"><div><span className="eyebrow">{dialog.mode === 'edit' ? 'UPDATE RECORD' : 'NEW RECORD'}</span><h2>{dialog.mode === 'edit' ? `Edit ${singular}` : `Add ${singular}`}</h2></div><button type="button" className="close-button" onClick={onClose}>×</button></div>
+    {examError && <div className="alert error form-alert">{examError}</div>}
+    {config.key === 'results' && !loadingExams && !examError && activeExams.length === 0 && <div className="alert neutral form-alert">Create an active exam before recording results.</div>}
+    {formError && <div className="alert error form-alert">{formError}</div>}
+    <div className="form-grid">{config.fields.map(([key, label, type, required, options]) => <label key={key} className={type === 'textarea' ? 'span-two' : ''}>{label}{config.key === 'results' && key === 'exam_id' ? <select value={values[key]} required={required} disabled={loadingExams || Boolean(examError) || activeExams.length === 0} onChange={event => { setValues({ ...values, [key]: event.target.value }); setFormError(''); }}><option value="">Select active exam</option>{activeExams.map(exam => <option key={exam.id} value={exam.id}>#{exam.id} · {exam.exam_name} ({exam.course_code}) · max {exam.max_marks}</option>)}</select> : type === 'textarea' ? <textarea value={values[key]} required={required} rows="3" onChange={event => setValues({ ...values, [key]: event.target.value })} /> : type === 'select' ? <select value={values[key]} required={required} onChange={event => setValues({ ...values, [key]: event.target.value })}><option value="">Select {label.toLowerCase()}</option>{options.map(value => <option key={value} value={value}>{value === 'all' ? 'Everyone · broadcast' : humanize(value)}</option>)}</select> : <input type={type} value={values[key]} required={required} min={type === 'number' ? key === 'marks_obtained' || key === 'capacity' ? 0 : 1 : undefined} max={key === 'marks_obtained' && selectedExam ? selectedExam.max_marks : undefined} step={type === 'number' && key === 'amount' ? '0.01' : '1'} onChange={event => { setValues({ ...values, [key]: event.target.value }); setFormError(''); }} />}{config.key === 'results' && key === 'marks_obtained' && selectedExam && <small className="field-hint">Maximum for this exam: {selectedExam.max_marks}</small>}</label>)}</div>
+    <div className="modal-footer"><button type="button" className="button secondary" disabled={saving} onClick={onClose}>Cancel</button><button className="button primary" disabled={saving || resultFormBlocked}>{saving ? <><span className="spinner" /> Saving…</> : dialog.mode === 'edit' ? 'Save changes' : 'Create record'}</button></div></form></section></div>;
+}
 function humanize(value = '') { return String(value).replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase()); }
 function formatDate(value) { if (!value) return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(date); }
 function renderCell(value, key) {
