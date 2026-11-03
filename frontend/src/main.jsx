@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import ResultsPage from './modules/exams/ResultsPage.jsx';
+import StudentsPage from './modules/students/index.jsx';
+import CoursesPage from './modules/courses/index.jsx';
+import AttendancePage from './modules/attendance/index.jsx';
+import FacultyPage from './modules/faculty/index.jsx';
 import './styles.css';
 
 const API = '/api';
@@ -116,6 +120,10 @@ function App() {
       <div className="page-wrap" key={current}>
         {current === 'dashboard' ? <Dashboard token={session.token} user={session.user} onNavigate={navigate} />
           : current === 'results' ? <ResultsPage request={request} token={session.token} user={session.user} />
+            : current === 'students' ? <StudentsPage request={request} token={session.token} user={session.user} />
+              : current === 'courses' ? <CoursesPage request={request} token={session.token} user={session.user} />
+                : current === 'attendance' ? <AttendancePage request={request} token={session.token} user={session.user} />
+                  : current === 'faculty' ? <FacultyPage request={request} token={session.token} user={session.user} />
             : current === 'exams' ? <ExamsPage token={session.token} user={session.user} />
               : current === 'fees' ? <FeesPage token={session.token} user={session.user} />
                 : current === 'notifications' ? <NotificationsPage token={session.token} user={session.user} />

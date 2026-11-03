@@ -141,7 +141,7 @@ Ensure-Records '/exams' 'exams' $examRecords { param($items,$r) @($items | Where
 $examRows = @(Get-Items '/exams' 'exams')
 $demoExams = @($examRecords | ForEach-Object { $wanted = $_.exam_name; $examRows | Where-Object exam_name -eq $wanted | Select-Object -First 1 })
 $results = for ($i = 0; $i -lt 3; $i++) { @{ exam_id=[int]$demoExams[$i].id; student_id=[int]$script:demoStudents[$i].id; marks_obtained=[int]@(86,42,78)[$i]; grade=[string]@('A','B+','A-')[$i] } }
-Ensure-Records '/results' 'results' @($results) { param($items,$r) @($items | Where-Object { [int]$_.exam_id -eq $r.exam_id -and [int]$_.student_id -eq $r.student_id }).Count -gt 0 }
+Ensure-Records '/exams/results' 'results' @($results) { param($items,$r) @($items | Where-Object { [int]$_.exam_id -eq $r.exam_id -and [int]$_.student_id -eq $r.student_id }).Count -gt 0 }
 }
 
 Invoke-SeedModule 'fees' {
