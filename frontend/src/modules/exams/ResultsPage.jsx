@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { StudentProfileNotice, useStudentProfile } from '../../studentProfile.jsx';
 
 const PAGE_SIZE = 20;
 
@@ -167,6 +168,7 @@ function ResultDialog({ dialog, request, token, onClose, onSaved }) {
 }
 
 export default function ResultsPage({ request, token, user }) {
+  const profile = useStudentProfile(request, token, user);
   const [rows, setRows] = useState([]);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 0 });
@@ -179,15 +181,17 @@ export default function ResultsPage({ request, token, user }) {
   const [notice, setNotice] = useState('');
   const [dialog, setDialog] = useState(null);
   const canWrite = ['admin', 'faculty'].includes(user?.role);
+  const canArchive = user?.role === 'admin';
 
   const load = useCallback(async () => {
+    if (user?.role === 'student' && (profile.loading || !profile.student)) { setRows([]); setPagination({ page, limit: PAGE_SIZE, total: 0, pages: 0 }); setBusy(profile.loading); return; }
     setBusy(true);
     setLoadFailed(false);
     setError('');
     try {
       const response = await request('/exams/results', {
         token,
-        query: { page, limit: PAGE_SIZE, ...query }
+        query: { page, limit: PAGE_SIZE, ...query, ...(user?.role === 'student' ? { student_id: profile.student.id } : {}) }
       });
       const nextRows = response.results || [];
       const nextPagination = response.pagination || { page, limit: PAGE_SIZE, total: nextRows.length, pages: 1 };
@@ -205,7 +209,7 @@ export default function ResultsPage({ request, token, user }) {
     } finally {
       setBusy(false);
     }
-  }, [page, query, request, token]);
+  }, [page, query, request, token, user?.role, profile.loading, profile.student?.id]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -263,7 +267,7 @@ export default function ResultsPage({ request, token, user }) {
     </div>
     <p className="resource-context"><span aria-hidden="true">i</span>Narrow the list by exam or student ID, then compare marks and grade. Open View to inspect the full result record.</p>
     {notice && <div className="alert success" role="status">{notice}<button type="button" aria-label="Dismiss notice" onClick={() => setNotice('')}>×</button></div>}
-    {!canWrite && <div className="role-note">You can view results. Creating, editing, or archiving requires an admin or faculty role.</div>}
+    {user?.role === 'student' && <StudentProfileNotice {...profile} />}
 
     <section className="panel table-panel results-panel" aria-label="Results directory">
       <div className="table-toolbar results-toolbar">
@@ -290,7 +294,7 @@ export default function ResultsPage({ request, token, user }) {
                 <td>{item.grade || <span className="muted-cell">—</span>}</td>
                 <td><span className={`status-pill ${item.record_status || 'active'}`}>{item.record_status || 'active'}</span></td>
                 <td className="row-actions"><button className="action-button" type="button" onClick={() => setDialog({ mode: 'view', item })}>View</button>
-                  {canWrite && <><button className="action-button" type="button" onClick={() => { setError(''); setDialog({ mode: 'edit', item }); }}>Edit</button><button className="action-button danger-text" type="button" onClick={() => archive(item)}>Archive</button></>}
+                  {canWrite && <button className="action-button" type="button" onClick={() => { setError(''); setDialog({ mode: 'edit', item }); }}>Edit</button>}{canArchive && <button className="action-button danger-text" type="button" onClick={() => archive(item)}>Archive</button>}
                 </td>
               </tr>)}</tbody>
             </table></div>}

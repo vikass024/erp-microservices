@@ -203,7 +203,6 @@ export default function CoursesPage({ request, token, user }) {
       <div><span className="eyebrow">CAMPUS MANAGEMENT</span><h1>Courses</h1><p>Browse the course catalog and manage course offerings.</p></div>
       {canWrite && <button className="button primary" onClick={() => { setError(''); setNotice(''); setDialog({ mode: 'create' }); }}>＋ Add course</button>}
     </div>
-    {!canWrite && <div className="role-note">You can view courses. Creating, editing, or archiving courses requires an admin role.</div>}
     {notice && <div className="alert success">{notice}<button onClick={() => setNotice('')}>×</button></div>}
     <section className="panel table-panel">
       <div className="table-toolbar">

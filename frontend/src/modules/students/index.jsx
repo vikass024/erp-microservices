@@ -211,7 +211,6 @@ export default function StudentsPage({ request, token, user }) {
       <div><span className="eyebrow">CAMPUS MANAGEMENT</span><h1>Students</h1><p>Browse student records and enrollment details.</p></div>
       {canWrite && <button className="button primary" onClick={() => { setError(''); setNotice(''); setDialog({ mode: 'create' }); }}>＋ Add student</button>}
     </div>
-    {!canWrite && <div className="role-note">You can view student records. Creating, editing, or deactivating records requires an admin role.</div>}
     {notice && <div className="alert success">{notice}<button onClick={() => setNotice('')}>×</button></div>}
     <section className="panel table-panel">
       <div className="table-toolbar">

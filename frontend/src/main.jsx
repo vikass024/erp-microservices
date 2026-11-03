@@ -5,6 +5,7 @@ import StudentsPage from './modules/students/index.jsx';
 import CoursesPage from './modules/courses/index.jsx';
 import AttendancePage from './modules/attendance/index.jsx';
 import FacultyPage from './modules/faculty/index.jsx';
+import { StudentProfileNotice, useStudentProfile } from './studentProfile.jsx';
 import './styles.css';
 
 const API = '/api';
@@ -20,6 +21,12 @@ const sections = [
   { id: 'fees', label: 'Fees', path: '/fees' },
   { id: 'notifications', label: 'Notifications', path: '/notifications' }
 ];
+const roleSections = {
+  admin: sections,
+  faculty: sections.filter(item => !['fees'].includes(item.id)),
+  student: sections.filter(item => ['dashboard', 'courses', 'attendance', 'exams', 'results', 'fees', 'notifications'].includes(item.id))
+};
+const roleLabels = { admin: 'Admin', faculty: 'Faculty', student: 'Student' };
 
 const resources = {
   students: { title: 'Students', subtitle: 'Manage student records and enrollment details.', endpoint: '/students', key: 'students', admin: true, fields: [
@@ -76,6 +83,7 @@ function App() {
   const [session, setSession] = useState(getSession);
   const [path, setPath] = useState(window.location.pathname);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const visibleSections = roleSections[session.user?.role] || roleSections.student;
 
   useEffect(() => {
     const onPop = () => setPath(window.location.pathname);
@@ -87,11 +95,11 @@ function App() {
     if (!session.token && path !== '/login') {
       window.history.replaceState({}, '', '/login');
       setPath('/login');
-    } else if (session.token && !sections.some(section => section.path === path)) {
+    } else if (session.token && !visibleSections.some(section => section.path === path)) {
       window.history.replaceState({}, '', '/dashboard');
       setPath('/dashboard');
     }
-  }, [session.token, path]);
+  }, [session.token, path, session.user?.role]);
 
   function navigate(next) {
     if (window.location.pathname !== next) window.history.pushState({}, '', next);
@@ -107,15 +115,15 @@ function App() {
   }
 
   if (!session.token) return <Login onSuccess={next => { setSession(next); navigate('/dashboard'); }} />;
-  const current = sections.find(item => item.path === path)?.id || 'dashboard';
+  const current = visibleSections.find(item => item.path === path)?.id || 'dashboard';
   return <div className="app-shell">
-    <Sidebar active={current} onNavigate={navigate} mobileOpen={mobileOpen} />
+    <Sidebar active={current} onNavigate={navigate} mobileOpen={mobileOpen} items={visibleSections} />
     {mobileOpen && <button className="mobile-scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
     <main className="main-area">
       <header className="topbar">
         <button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Open navigation">☰</button>
-        <div className="crumb">CampusFlow <span>/</span> <b>{sections.find(item => item.id === current)?.label}</b></div>
-        <div className="profile"><div className="avatar">{(session.user?.name || 'U').slice(0, 1).toUpperCase()}</div><div className="profile-copy"><strong>{session.user?.name || 'User'}</strong><span>{session.user?.role || 'member'}</span></div><button className="text-button" onClick={signOut}>Sign out</button></div>
+        <div className="crumb">CampusFlow <span>/</span> <b>{visibleSections.find(item => item.id === current)?.label}</b></div>
+        <div className="profile"><div className="avatar">{(session.user?.name || 'U').slice(0, 1).toUpperCase()}</div><div className="profile-copy"><strong>{session.user?.name || 'User'}</strong><span>{roleLabels[session.user?.role] || 'Student'}</span></div><button className="text-button" onClick={signOut}>Sign out</button></div>
       </header>
       <div className="page-wrap" key={current}>
         {current === 'dashboard' ? <Dashboard token={session.token} user={session.user} onNavigate={navigate} />
@@ -145,11 +153,11 @@ function NotificationsPage({ token, user }) {
   return <ResourcePage type="notifications" token={token} user={user} />;
 }
 
-function Sidebar({ active, onNavigate, mobileOpen }) {
+function Sidebar({ active, onNavigate, mobileOpen, items }) {
   return <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
     <div className="brand"><div className="brand-mark">C</div><div><strong>CampusFlow</strong><small>COLLEGE ERP</small></div></div>
     <div className="nav-label">WORKSPACE</div>
-    <nav>{sections.map(item => <button key={item.id} className={`nav-item ${active === item.id ? 'active' : ''}`} onClick={() => onNavigate(item.path)}><span className="nav-icon">{icons[item.id]}</span>{item.label}{active === item.id && <span className="nav-current" />}</button>)}</nav>
+    <nav>{items.map(item => <button key={item.id} className={`nav-item ${active === item.id ? 'active' : ''}`} onClick={() => onNavigate(item.path)}><span className="nav-icon">{icons[item.id]}</span>{item.label}{active === item.id && <span className="nav-current" />}</button>)}</nav>
     <div className="sidebar-bottom"><div className="help-card"><div className="help-icon">✦</div><strong>Presentation mode</strong><p>Your live ERP workspace, connected to the API gateway.</p><span className="live-pill"><i /> Gateway connection</span></div><div className="side-foot">MICROSERVICES · ERP</div></div>
   </aside>;
 }
@@ -170,6 +178,8 @@ function Login({ onSuccess }) {
 }
 
 function Dashboard({ token, user, onNavigate }) {
+  const profile = useStudentProfile(request, token, user);
+  const [studentSummary, setStudentSummary] = useState({ attendance: [], results: [], fees: [] });
   const [metrics, setMetrics] = useState([]); const [recent, setRecent] = useState([]); const [busy, setBusy] = useState(true); const [warning, setWarning] = useState('');
   useEffect(() => {
     let alive = true;
@@ -177,13 +187,26 @@ function Dashboard({ token, user, onNavigate }) {
       ['students', 'Students', 'students', '♙', 'blue'], ['faculty', 'Active faculty', 'faculties', '♧', 'violet'], ['courses', 'Courses', 'courses', '▤', 'teal'], ['attendance', 'Attendance', 'attendances', '◷', 'amber'], ['exams', 'Exams', 'exams', '✎', 'rose'], ['fees', 'Fees', 'fees', '＄', 'green'], ['notifications', 'Notifications', 'notifications', '◉', 'blue']
     ];
     (async () => {
+      if (user?.role === 'student') {
+        if (profile.loading) return;
+        if (!profile.student) { if (alive) setBusy(false); return; }
+        const student_id = profile.student.id;
+        const [attendance, results, fees, notifications] = await Promise.all([
+          request('/attendance', { token, query: { student_id, page: 1, limit: 100 } }).catch(() => ({ attendances: [] })),
+          request('/exams/results', { token, query: { student_id, page: 1, limit: 100 } }).catch(() => ({ results: [] })),
+          request('/fees', { token, query: { student_id, page: 1, limit: 100 } }).catch(() => ({ fees: [] })),
+          request('/notifications', { token, query: { target_role: 'student' } }).catch(() => ({ notifications: [] }))
+        ]);
+        if (alive) { setStudentSummary({ attendance: attendance.attendances || [], results: results.results || [], fees: fees.fees || [] }); setRecent((notifications.notifications || []).slice(0, 4)); setBusy(false); }
+        return;
+      }
       const audience = ['student', 'faculty'].includes(user?.role) ? user.role : undefined;
-      const values = await Promise.all(configs.map(async ([id, label, key, icon, color]) => {
+      const values = user?.role === 'admin' ? await Promise.all(configs.map(async ([id, label, key, icon, color]) => {
         try {
           const result = await request(resources[id].endpoint, { token, query: { page: 1, limit: 1, ...(id === 'notifications' && audience ? { target_role: audience } : {}) } });
           return { id, label, icon, color, count: result.pagination?.total ?? result[key]?.length ?? null };
         } catch { return null; }
-      }));
+      })) : [];
       try {
         const result = await request('/notifications', { token, query: audience ? { target_role: audience } : undefined });
         if (alive) setRecent((result.notifications || []).slice(0, 4));
@@ -191,19 +214,34 @@ function Dashboard({ token, user, onNavigate }) {
       if (alive) { setMetrics(values.filter(item => item && item.count !== null)); setWarning(values.some(item => item === null) ? 'Some service summaries are unavailable right now.' : ''); setBusy(false); }
     })();
     return () => { alive = false; };
-  }, [token, user?.role]);
+  }, [token, user?.role, profile.loading, profile.student?.id]);
   const dateLabel = new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date());
+  if (user?.role === 'student') return <>
+    <section className="welcome-banner"><div className="welcome-copy"><span className="eyebrow light">{dateLabel.toUpperCase()}</span><h1>Welcome, {user?.name?.split(' ')[0] || 'Student'}</h1><p>Your academic activity and campus updates, all in one place.</p></div><div className="banner-art"><div className="banner-ring ring-a"/><div className="banner-ring ring-b"/><div className="banner-orb">C</div></div></section>
+    <div className="section-heading"><div><span className="eyebrow">MY CAMPUS</span><h2>Your college at a glance</h2></div></div>
+    <StudentProfileNotice {...profile} />
+    {!profile.loading && !profile.error && profile.student && busy && <div className="profile-state" role="status">Loading your attendance, marks, fees and campus updates…</div>}
+    {!profile.loading && !profile.error && profile.student && !busy && <>
+      <section className="student-summary-grid">
+        <article className="panel student-summary-card"><span>Attendance</span><strong>{studentSummary.attendance.length ? `${Math.round(studentSummary.attendance.filter(item => item.status === 'present').length / studentSummary.attendance.length * 100)}%` : '—'}</strong><small>{studentSummary.attendance.length} recorded days</small></article>
+        <article className="panel student-summary-card"><span>Recent marks</span><strong>{studentSummary.results.length ? studentSummary.results.slice(0, 3).map(item => item.marks_obtained).join(' · ') : '—'}</strong><small>{studentSummary.results.length} published results</small></article>
+        <article className="panel student-summary-card"><span>Fees due</span><strong>{studentSummary.fees.filter(item => item.status !== 'paid').length}</strong><small>Unpaid fee records</small></article>
+      </section>
+      <section className="dashboard-lower"><div className="panel recent-panel"><div className="panel-heading"><div><span className="eyebrow">ACADEMICS</span><h3>Recent marks</h3></div><button className="link-button" onClick={() => onNavigate('/results')}>View results →</button></div>{studentSummary.results.length ? studentSummary.results.slice(0, 5).map(item => <div className="student-list-row" key={item.id}><span>Exam #{item.exam_id}</span><strong>{item.marks_obtained} marks {item.grade ? `· ${item.grade}` : ''}</strong></div>) : <div className="empty-inline">No marks available yet.</div>}</div><div className="panel recent-panel"><div className="panel-heading"><div><span className="eyebrow">CAMPUS UPDATES</span><h3>Recent notifications</h3></div><button className="link-button" onClick={() => onNavigate('/notifications')}>View all →</button></div>{recent.length ? recent.map(item => <div className="recent-item" key={item.id}><div className="recent-copy"><strong>{item.title}</strong><p>{item.message}</p><span>{formatDate(item.created_at)}</span></div></div>) : <div className="empty-inline">{busy ? 'Loading notifications…' : 'No recent notifications.'}</div>}</div></section>
+    </>}
+  </>;
   return <>
-    <section className="welcome-banner"><div className="welcome-copy"><span className="eyebrow light">{dateLabel.toUpperCase()}</span><h1>Good day, {user?.name?.split(' ')[0] || 'there'} <span>✦</span></h1><p>Here’s what’s happening across your campus today.</p><button className="button banner-button" onClick={() => onNavigate('/students')}>Explore student records <span>→</span></button></div><div className="banner-art"><div className="banner-ring ring-a"/><div className="banner-ring ring-b"/><div className="banner-spark">✦</div><div className="banner-stat"><span>API GATEWAY</span><strong>localhost:8080</strong></div><div className="banner-orb">C</div></div></section>
+    <section className="welcome-banner"><div className="welcome-copy"><span className="eyebrow light">{dateLabel.toUpperCase()}</span><h1>Good day, {user?.name?.split(' ')[0] || 'there'} <span>✦</span></h1><p>Here’s what’s happening across your campus today.</p>{user?.role === 'admin' && <button className="button banner-button" onClick={() => onNavigate('/students')}>Explore student records <span>→</span></button>}</div><div className="banner-art"><div className="banner-ring ring-a"/><div className="banner-ring ring-b"/><div className="banner-spark">✦</div><div className="banner-stat"><span>YOUR WORKSPACE</span><strong>CampusFlow</strong></div><div className="banner-orb">C</div></div></section>
     <div className="section-heading"><div><span className="eyebrow">AT A GLANCE</span><h2>Campus overview</h2></div><span className="updated-label"><i /> Live data from your services</span></div>
     {warning && <div className="alert neutral">{warning} Refresh the page to try again.</div>}
-    <section className="metric-grid">{busy ? Array.from({ length: 6 }, (_, index) => <div className="metric-card skeleton-card" key={index}><div className="skeleton line-short"/><div className="skeleton line-large"/><div className="skeleton line-medium"/></div>) : metrics.map((item, index) => <button className="metric-card" key={item.id} onClick={() => onNavigate(`/${item.id}`)} style={{ animationDelay: `${index * 45}ms` }}><div className="metric-top"><span>{item.label}</span><span className={`metric-icon ${item.color}`}>{item.icon}</span></div><strong className="metric-value">{item.count.toLocaleString()}</strong><span className="metric-bottom"><span className="metric-dot" /> Records in system <span className="metric-arrow">↗</span></span></button>)}</section>
-    <section className="dashboard-lower"><div className="panel quick-panel"><div className="panel-heading"><div><span className="eyebrow">QUICK ACCESS</span><h3>Go to a workspace</h3></div></div><div className="quick-grid">{['students', 'courses', 'attendance', 'exams'].map(id => <button className="quick-link" key={id} onClick={() => onNavigate(`/${id}`)}><span className={`quick-icon ${id}`}>{icons[id]}</span><span><strong>{resources[id].title}</strong><small>Open workspace</small></span><b>↗</b></button>)}</div></div><div className="panel recent-panel"><div className="panel-heading"><div><span className="eyebrow">CAMPUS UPDATES</span><h3>Recent notifications</h3></div><button className="link-button" onClick={() => onNavigate('/notifications')}>View all →</button></div>{recent.length ? <div className="recent-list">{recent.map(item => <div className="recent-item" key={item.id}><div className="recent-mark">◉</div><div className="recent-copy"><strong>{item.title}</strong><p>{item.message}</p><span>{formatDate(item.created_at)} · {item.target_role || 'Everyone'}</span></div></div>)}</div> : <div className="empty-inline">{busy ? 'Loading notifications…' : 'No recent notifications to show.'}</div>}</div></section>
+    {user?.role === 'admin' && <section className="metric-grid">{busy ? Array.from({ length: 6 }, (_, index) => <div className="metric-card skeleton-card" key={index}><div className="skeleton line-short"/><div className="skeleton line-large"/><div className="skeleton line-medium"/></div>) : metrics.map((item, index) => <button className="metric-card" key={item.id} onClick={() => onNavigate(`/${item.id}`)} style={{ animationDelay: `${index * 45}ms` }}><div className="metric-top"><span>{item.label}</span><span className={`metric-icon ${item.color}`}>{item.icon}</span></div><strong className="metric-value">{item.count.toLocaleString()}</strong><span className="metric-bottom"><span className="metric-dot" /> Records in system <span className="metric-arrow">↗</span></span></button>)}</section>}
+    <section className="dashboard-lower"><div className="panel quick-panel"><div className="panel-heading"><div><span className="eyebrow">QUICK ACCESS</span><h3>{user?.role === 'faculty' ? 'Faculty tools' : 'Go to a workspace'}</h3></div></div><div className="quick-grid">{(user?.role === 'faculty' ? [['attendance', 'Mark attendance'], ['results', 'Enter marks'], ['notifications', 'Post notification']] : [['students', 'Students'], ['courses', 'Courses'], ['attendance', 'Attendance'], ['exams', 'Exams']]).map(([id, label]) => <button className="quick-link" key={id} onClick={() => onNavigate(`/${id}`)}><span className={`quick-icon ${id}`}>{icons[id]}</span><span><strong>{label}</strong><small>Open workspace</small></span><b>↗</b></button>)}</div></div><div className="panel recent-panel"><div className="panel-heading"><div><span className="eyebrow">CAMPUS UPDATES</span><h3>Recent notifications</h3></div><button className="link-button" onClick={() => onNavigate('/notifications')}>View all →</button></div>{recent.length ? <div className="recent-list">{recent.map(item => <div className="recent-item" key={item.id}><div className="recent-mark">◉</div><div className="recent-copy"><strong>{item.title}</strong><p>{item.message}</p><span>{formatDate(item.created_at)} · {item.target_role || 'Everyone'}</span></div></div>)}</div> : <div className="empty-inline">{busy ? 'Loading notifications…' : 'No recent notifications to show.'}</div>}</div></section>
   </>;
 }
 
 function ResourcePage({ type, token, user }) {
   const config = resources[type];
+  const profile = useStudentProfile(request, token, user);
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState(null);
   const [page, setPage] = useState(1);
@@ -219,8 +257,8 @@ function ResourcePage({ type, token, user }) {
   const [notice, setNotice] = useState('');
   const canWrite = config.admin ? user?.role === 'admin' : config.writer?.includes(user?.role);
   const canEdit = canWrite && type !== 'notifications';
-  const canArchive = canWrite && type !== 'notifications';
-  const canDelete = canWrite && type === 'notifications';
+  const canArchive = user?.role === 'admin' && type !== 'notifications';
+  const canDelete = user?.role === 'admin' && type === 'notifications';
   const columns = config.columns;
 
   const load = async () => {
@@ -231,8 +269,11 @@ function ResourcePage({ type, token, user }) {
       const query = {
         ...(config.paginated !== false ? { page, limit: 20 } : {}),
         ...(search ? { q: search } : {}),
-        ...filters
+        ...filters,
+        ...(type === 'notifications' && ['student', 'faculty'].includes(user?.role) ? { target_role: user.role } : {}),
+        ...(type === 'fees' && user?.role === 'student' && profile.student ? { student_id: profile.student.id } : {})
       };
+      if (type === 'fees' && user?.role === 'student' && !profile.student) { setItems([]); setPagination(null); setBusy(false); return; }
       const data = await request(config.endpoint, { token, query });
       setItems(data[config.key] || []);
       setPagination(data.pagination || null);
@@ -246,7 +287,7 @@ function ResourcePage({ type, token, user }) {
     }
   };
 
-  useEffect(() => { load(); }, [type, page, search, filters, token]);
+  useEffect(() => { if (!(type === 'fees' && user?.role === 'student' && profile.loading)) load(); }, [type, page, search, filters, token, profile.loading, profile.student?.id, user?.role]);
 
   function searchSubmit(event) {
     event.preventDefault();
@@ -292,8 +333,8 @@ function ResourcePage({ type, token, user }) {
     <div className="page-heading"><div><span className="eyebrow">CAMPUS MANAGEMENT</span><h1>{config.title}</h1><p>{config.subtitle}</p></div>{canWrite && <button className="button primary" onClick={() => { setError(''); setDialog({ mode: 'create' }); }}><span className="plus">＋</span> Add {singular}</button>}</div>
     {config.context && <p className="resource-context"><span aria-hidden="true">i</span>{config.context}</p>}
     {notice && <div className="alert success">{notice}<button onClick={() => setNotice('')}>×</button></div>}
-    {!canWrite && <div className="role-note">You can view these records. {type === 'notifications' ? 'Creating or deleting announcements requires an admin or faculty role.' : `Adding or changing them requires ${config.admin ? 'an admin' : 'an admin or faculty'} role.`}</div>}
-    <section className="panel table-panel"><div className="table-toolbar"><div><span className="eyebrow">RECORDS</span><h2>{config.title} directory</h2></div>{(config.searchable !== false || config.filters?.length > 0) && <form className="resource-filters" onSubmit={searchSubmit}>
+    {type === 'fees' && user?.role === 'student' && <StudentProfileNotice {...profile} />}
+    <section className="panel table-panel"><div className="table-toolbar"><div><span className="eyebrow">RECORDS</span><h2>{config.title} directory</h2></div>{(config.searchable !== false || config.filters?.length > 0) && !(type === 'fees' && user?.role === 'student') && <form className="resource-filters" onSubmit={searchSubmit}>
       {config.searchable !== false && <label className="search-form"><span>⌕</span><input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder={`Search ${config.title.toLowerCase()}…`} aria-label={`Search ${config.title}`} /></label>}
       {(config.filters || []).map(filter => <label className="filter-field" key={filter.name}>{filter.label}{filter.type === 'select' ? <select value={filterInput[filter.name] || ''} onChange={event => setFilterInput({ ...filterInput, [filter.name]: event.target.value })}><option value="">All</option>{filter.options.map(value => <option key={value} value={value}>{humanize(value)}</option>)}</select> : <input type={filter.type} min={filter.type === 'number' ? 1 : undefined} value={filterInput[filter.name] || ''} onChange={event => setFilterInput({ ...filterInput, [filter.name]: event.target.value })} />}</label>)}
       <button className="button secondary filter-submit" type="submit">Apply</button>

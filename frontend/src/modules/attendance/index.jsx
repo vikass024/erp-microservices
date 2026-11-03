@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { StudentProfileNotice, useStudentProfile } from '../../studentProfile.jsx';
 
 const PAGE_SIZE = 20;
 const STATUSES = ['present', 'absent', 'leave'];
@@ -86,6 +87,7 @@ function AttendanceDialog({ item, mode, onClose, onSave, saving }) {
 }
 
 export default function AttendancePage({ request, token, user }) {
+  const profile = useStudentProfile(request, token, user);
   const [records, setRecords] = useState([]);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
@@ -99,8 +101,10 @@ export default function AttendancePage({ request, token, user }) {
   const [notice, setNotice] = useState('');
   const [dialog, setDialog] = useState(null);
   const canWrite = ['admin', 'faculty'].includes(user?.role);
+  const canArchive = user?.role === 'admin';
 
   const loadRecords = useCallback(async () => {
+    if (user?.role === 'student' && (profile.loading || !profile.student)) { setRecords([]); setPagination({ total: 0, pages: 0 }); setBusy(profile.loading); return; }
     if (typeof request !== 'function') {
       setBusy(false);
       setLoadFailed(true);
@@ -113,7 +117,7 @@ export default function AttendancePage({ request, token, user }) {
     try {
       const response = await request('/attendance', {
         token,
-        query: { page, limit: PAGE_SIZE, ...query }
+        query: { page, limit: PAGE_SIZE, ...query, ...(user?.role === 'student' ? { student_id: profile.student.id } : {}) }
       });
       setRecords(response.attendances);
       setPagination(response.pagination);
@@ -125,7 +129,7 @@ export default function AttendancePage({ request, token, user }) {
     } finally {
       setBusy(false);
     }
-  }, [page, query, request, token]);
+  }, [page, query, request, token, user?.role, profile.loading, profile.student?.id]);
 
   useEffect(() => { loadRecords(); }, [loadRecords]);
 
@@ -190,7 +194,7 @@ export default function AttendancePage({ request, token, user }) {
       <div><span className="eyebrow">CAMPUS MANAGEMENT</span><h1>Attendance</h1><p>Review and record daily student attendance.</p></div>
       {canWrite && <button className="button primary" onClick={() => { setNotice(''); setDialog({ mode: 'create' }); }}>＋ Add attendance</button>}
     </div>
-    {!canWrite && <div className="role-note">You can view attendance records. Creating, editing, or archiving records requires an admin or faculty role.</div>}
+    {user?.role === 'student' && <StudentProfileNotice {...profile} />}
     {notice && <div className="alert success">{notice}<button onClick={() => setNotice('')}>×</button></div>}
     <section className="panel table-panel">
       <div className="table-toolbar">
@@ -211,7 +215,7 @@ export default function AttendancePage({ request, token, user }) {
               {records.map(record => <tr key={record.id}>
                 <td>{record.student_id}</td><td>{String(record.date).slice(0, 10)}</td><td><span className={`status-pill ${record.status}`}>{record.status}</span></td>
                 <td>{record.remarks || <span className="muted-cell">—</span>}</td><td><span className={`status-pill ${record.record_status}`}>{record.record_status}</span></td>
-                <td className="row-actions"><button className="action-button" onClick={() => setDialog({ mode: 'view', item: record })}>View</button>{canWrite && <><button className="action-button" onClick={() => { setNotice(''); setDialog({ mode: 'edit', item: record }); }}>Edit</button><button className="action-button danger-text" onClick={() => archiveRecord(record)}>Archive</button></>}</td>
+                <td className="row-actions"><button className="action-button" onClick={() => setDialog({ mode: 'view', item: record })}>View</button>{canWrite && <button className="action-button" onClick={() => { setNotice(''); setDialog({ mode: 'edit', item: record }); }}>Edit</button>}{canArchive && <button className="action-button danger-text" onClick={() => archiveRecord(record)}>Archive</button>}</td>
               </tr>)}
             </tbody></table></div>}
       <div className="table-footer"><span>{busy ? 'Loading records…' : loadFailed ? 'Record count unavailable' : `Showing ${firstRecord}–${firstRecord + records.length - 1} of ${pagination.total}`}</span>
