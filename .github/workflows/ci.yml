@@ -24,11 +24,29 @@ jobs:
       - name: Test student-service
         run: npm test --prefix services/student-service
 
+      - name: Install auth-service dependencies
+        run: npm ci --prefix services/auth-service
+
+      - name: Test auth-service
+        run: npm test --prefix services/auth-service
+
+      - name: Install api-gateway dependencies
+        run: npm ci --prefix api-gateway
+
+      - name: Test api-gateway
+        run: npm test --prefix api-gateway
+
       - name: Install course-service dependencies
         run: npm ci --prefix services/course-service
 
       - name: Test course-service
         run: npm test --prefix services/course-service
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Build frontend
+        run: npm run build --prefix frontend
 
       - name: Build all services with Docker Compose
         run: docker compose build

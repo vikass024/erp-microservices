@@ -159,6 +159,10 @@ app.use((error, req, res, next) => {
 
 app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
 
-app.listen(port, () => {
-  console.log(`Auth service listening on port ${port}`);
-});
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`Auth service listening on port ${port}`);
+  });
+}
+
+module.exports = app;

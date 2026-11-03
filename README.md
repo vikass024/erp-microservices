@@ -45,6 +45,45 @@ docker compose up --build
 
 The gateway health check is `GET http://localhost:8080/health`. Direct service health checks are available at ports 4000, 4001, and 4002 on `/health`.
 
+## Frontend
+
+The React frontend uses Vite. From the repository root, install dependencies and start the development server:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend includes eight modules. All modules allow authenticated users to view records. Write access is role restricted as follows:
+
+| Module | Roles that can create, update, or archive records |
+|---|---|
+| Students | Admin |
+| Courses | Admin |
+| Attendance | Admin, faculty |
+| Faculty | Admin |
+| Exams | Admin, faculty |
+| Results | Admin, faculty |
+| Fees | Admin |
+| Notifications | Admin, faculty (create or delete) |
+
+## Demo data
+
+With the Docker Compose services running, use `scripts/seed-demo.ps1` to seed the gateway with a demo admin account and sample records across students, courses, attendance, faculty, exams, results, fees, and notifications. From the repository root, run this in PowerShell:
+
+```powershell
+.\scripts\seed-demo.ps1
+```
+
+The script waits for the gateway, registers (or reuses) `admin.demo@example.edu`, promotes that account in the auth database, and logs in before creating records. It skips matching records, so it can be rerun safely. Override the defaults when needed:
+
+```powershell
+.\scripts\seed-demo.ps1 -BaseUrl http://localhost:8080 -Email demo.admin@example.edu -Password 'YourDemoPassword123!' -Name 'Demo Administrator'
+```
+
+The chosen password must be at least eight characters. Keep demo credentials for local development only.
+
 ## API Endpoints
 
 All paths below are through the gateway. Student and course endpoints require `Authorization: Bearer <token>`, except their public health checks. Reads accept any valid token. Create, update, and delete require a token with role `admin`.
