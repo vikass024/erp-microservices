@@ -177,7 +177,6 @@ export default function FacultyPage({ request, token, user }) {
       <div><span className="eyebrow">CAMPUS MANAGEMENT</span><h1>Faculty</h1><p>Keep faculty directory details current.</p></div>
       {canWrite && <button className="button primary" onClick={() => { setNotice(''); setDialog({ mode: 'create' }); }}>＋ Add faculty member</button>}
     </div>
-    {!canWrite && <div className="role-note">You can view faculty records. Creating, editing, or archiving records requires an admin role.</div>}
     {notice && <div className="alert success">{notice}<button onClick={() => setNotice('')}>×</button></div>}
     <section className="panel table-panel">
       <div className="table-toolbar">
