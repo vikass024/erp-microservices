@@ -50,3 +50,8 @@ jobs:
 
       - name: Build all services with Docker Compose
         run: docker compose build
+
+      - name: Validate production Compose configuration
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml config
