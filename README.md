@@ -68,6 +68,24 @@ The frontend includes eight modules. All modules allow authenticated users to vi
 | Fees | Admin |
 | Notifications | Admin, faculty (create or delete) |
 
+## Deployment
+
+On a Linux VM with Docker Engine and Docker Compose v2.24.4 or newer installed, clone the project and run these commands from the repository root. The production override uses Compose’s [`!override` merge tag](https://docs.docker.com/reference/compose-file/merge/#replace-value) to replace the gateway port mapping. The sample environment values make local development work; replace `DB_PASS` and `JWT_SECRET` with strong, private values before exposing the VM to users.
+
+```bash
+cp .env.example .env
+${EDITOR:-vi} .env
+docker compose -f docker-compose.yml -f docker-compose.prod.yml config
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+```
+
+Open `http://<VM_PUBLIC_IP>/` to use CampusFlow. The production frontend serves the Vite build, falls back to `index.html` for client-side routes, and proxies `/api/` to the API gateway. The gateway is bound to `127.0.0.1:8080`; backend service and database ports are not published. To view service logs or stop the stack, run:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+```
+
 ## Demo data
 
 With the Docker Compose services running, use `scripts/seed-demo.ps1` to seed the gateway with a demo admin account and sample records across students, courses, attendance, faculty, exams, results, fees, and notifications. From the repository root, run this in PowerShell:
@@ -83,6 +101,14 @@ The script waits for the gateway, registers (or reuses) `admin.demo@example.edu`
 ```
 
 The chosen password must be at least eight characters. Keep demo credentials for local development only.
+
+To register the admin, faculty, and student demo logins and set their roles in the auth database, run this PowerShell script from the repository root:
+
+```powershell
+.\scripts\create-demo-users.ps1
+```
+
+It can be rerun safely. Set `-AdminPassword`, `-FacultyPassword`, and `-StudentPassword` to override the demo passwords.
 
 ## API Endpoints
 

@@ -8,7 +8,7 @@ import FacultyPage from './modules/faculty/index.jsx';
 import { StudentProfileNotice, useStudentProfile } from './studentProfile.jsx';
 import './styles.css';
 
-const API = '/api';
+const API = import.meta.env.VITE_API_BASE_URL || '/api';
 const icons = { dashboard: '◫', students: '♙', courses: '▤', faculty: '♧', attendance: '◷', exams: '✎', results: '▥', fees: '＄', notifications: '◉' };
 const sections = [
   { id: 'dashboard', label: 'Overview', path: '/dashboard' },

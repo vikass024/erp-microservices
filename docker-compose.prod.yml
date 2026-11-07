@@ -1,0 +1,83 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    ports:
+      - "80:80"
+    restart: unless-stopped
+    depends_on:
+      api-gateway:
+        condition: service_started
+    networks:
+      - erp-network
+
+  api-gateway:
+    ports: !override
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+
+  auth-service:
+    ports: !reset []
+    restart: unless-stopped
+
+  student-service:
+    ports: !reset []
+    restart: unless-stopped
+
+  course-service:
+    ports: !reset []
+    restart: unless-stopped
+
+  attendance-service:
+    ports: !reset []
+    restart: unless-stopped
+
+  faculty-service:
+    ports: !reset []
+    restart: unless-stopped
+
+  exam-service:
+    ports: !reset []
+    restart: unless-stopped
+
+  fees-service:
+    ports: !reset []
+    restart: unless-stopped
+
+  notification-service:
+    ports: !reset []
+    restart: unless-stopped
+
+  auth-db:
+    ports: !reset []
+    restart: unless-stopped
+
+  student-db:
+    ports: !reset []
+    restart: unless-stopped
+
+  course-db:
+    ports: !reset []
+    restart: unless-stopped
+
+  attendance-db:
+    ports: !reset []
+    restart: unless-stopped
+
+  faculty-db:
+    ports: !reset []
+    restart: unless-stopped
+
+  exam-db:
+    ports: !reset []
+    restart: unless-stopped
+
+  fees-db:
+    ports: !reset []
+    restart: unless-stopped
+
+  notification-db:
+    ports: !reset []
+    restart: unless-stopped
